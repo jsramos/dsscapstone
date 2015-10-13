@@ -18,12 +18,20 @@ sets <- c('business','checkin','review','tip','user')
 filenames <- paste(filePrefix, sets, '.json', sep = '')
 # Read them all in one go
 rawstrings <- llply(as.list(filenames), function(x) {read_lines(x)})
-# Save this file as an RDS
-saveRDS(rawstrings, file='rawstrings.RDS')
+# Save the businesses JSON strings as an RDS file
+saveRDS(rawstrings[[1]], file=paste(sets[1], 'strings.RDS', sep=''))
+# Save the check-in JSON strings as an RDS file
+saveRDS(rawstrings[[2]], file=paste(sets[2], 'strings.RDS', sep=''))
+# Save the review JSON strings as an RDS file
+saveRDS(rawstrings[[3]], file=paste(sets[3], 'strings.RDS', sep=''))
+# Save the tips JSON strings as an RDS file
+saveRDS(rawstrings[[4]], file=paste(sets[4], 'strings.RDS', sep=''))
+# Save the businesses JSON strings as an RDS file
+saveRDS(rawstrings[[5]], file=paste(sets[5], 'strings.RDS', sep=''))
 # Load this RDS to remove dependency on physical files being present
-newstrings <- readRDS('./rawstrings.RDS')
+bizstrings <- readRDS('./businessstrings.RDS')
 # See if they are identical
-if (!identical(rawstrings, newstrings)) {
+if (!identical(rawstrings[[1]], bizstrings)) {
      stop('Error loading RDS.')   
 }
 
