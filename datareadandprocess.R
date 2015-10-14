@@ -40,10 +40,8 @@ bizdata <- fromJSON(sprintf("[%s]", paste(bizstrings, collapse = ',')), # separa
               simplifyDataFrame = T)
 
 # Remove whitespaces from column names
-names(bizdata) <- gsub(' ', '', names(bizdata), perl = T)
-
-# Replace dots with dash for column names
-names(bizdata) <- gsub('\\.', '_', names(bizdata))
+# Replace . with _
+names(bizdata) <- gsub(' ', '', gsub('\\.', '_', names(bizdata), perl=T), perl=T)
 
 # Transform attributes.Accepts Credit Cards from logical list with NULLs to a logical with NAs.
 mutate(bizdata, 
