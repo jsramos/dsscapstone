@@ -38,4 +38,4 @@ if (!identical(rawstrings[[1]], bizstrings)) {
 # Transform business dataset
 # See http://mkseo.pe.kr/stats/?p=898
 # bizdata <- sapply(rawstrings[[1]], function(x) {fromJSON(x)})
-
+d <- fromJSON(sprintf("[%s]", paste(bizstrings, collapse = ',')), flatten = T)
