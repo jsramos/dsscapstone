@@ -16,26 +16,73 @@ filePrefix <- './yelp_dataset_challenge_academic_dataset/yelp_academic_dataset_'
 sets <- c('business','checkin','review','tip','user')
 # Build filenames
 filenames <- paste(filePrefix, sets, '.json', sep = '')
-# Read them all in one go
-rawstrings <- llply(as.list(filenames), function(x) {read_lines(x)})
-# Save the businesses JSON strings as an RDS file
-saveRDS(rawstrings[[1]], file=paste(sets[1], 'strings.RDS', sep=''))
-# Save the check-in JSON strings as an RDS file
-saveRDS(rawstrings[[2]], file=paste(sets[2], 'strings.RDS', sep=''))
-# Save the review JSON strings as an RDS file
-saveRDS(rawstrings[[3]], file=paste(sets[3], 'strings.RDS', sep=''))
-# Save the tips JSON strings as an RDS file
-saveRDS(rawstrings[[4]], file=paste(sets[4], 'strings.RDS', sep=''))
-# Save the businesses JSON strings as an RDS file
-saveRDS(rawstrings[[5]], file=paste(sets[5], 'strings.RDS', sep=''))
-# Load this RDS to remove dependency on physical files being present
-bizstrings <- readRDS('./businessstrings.RDS')
-# See if they are identical
-if (!identical(rawstrings[[1]], bizstrings)) {
-     stop('Error loading RDS.')   
-}
+# Read businesses
+bizstrings <- read_lines(filenames[1])
+# Read checkin
+checkinstrings <- read_lines(filenames[2])
+# Read reviews
+reviewstrings <- read_lines(filenames[3])
+# Read tips
+tipstrings <- read_lines(filenames[4])
+# Read users
+userstrings <- read_lines(filenames[5])
 
-# Transform business dataset
-# See http://mkseo.pe.kr/stats/?p=898
-# bizdata <- sapply(rawstrings[[1]], function(x) {fromJSON(x)})
-d <- fromJSON(sprintf("[%s]", paste(bizstrings, collapse = ',')), flatten = T)
+# Transform all datasets
+# At this stage we only have an array of strings instead of a JSON array.
+# To transform a character array to a JSON array, we need to
+# 1. concatenate all elements in the char array separated by a comma
+# 2. enclose everything in square brackets [] so that JSON converters know this is an anonymous array.
+
+# Transform biz dataset
+bizdata <- fromJSON(sprintf("[%s]", paste(bizstrings, collapse = ',')), # separates array, insert commas and put everything in []
+              flatten = T, 
+              simplifyVector = T,
+              simplifyDataFrame = T)
+
+# Remove whitespaces from column names
+names(bizdata) <- gsub(' ', '', names(bizdata), perl = T)
+
+# Replace dots with dash for column names
+names(bizdata) <- gsub('\\.', '_', names(bizdata))
+
+# Transform attributes.Accepts Credit Cards from logical list with NULLs to a logical with NAs.
+mutate(bizdata, 
+       attributes.AcceptsCreditCards = 
+           as.logical(as.character(attributes.AcceptsCreditCards)))
+
+# Transform biz dataset
+checkindata <- fromJSON(sprintf("[%s]", paste(checkinstrings, collapse = ',')), # separates array, insert commas and put everything in []
+                    flatten = T, 
+                    simplifyVector = T,
+                    simplifyDataFrame = T)
+
+# Transform biz dataset
+reviewdata <- fromJSON(sprintf("[%s]", paste(reviewstrings, collapse = ',')), # separates array, insert commas and put everything in []
+                    flatten = T, 
+                    simplifyVector = T,
+                    simplifyDataFrame = T)
+
+# Transform biz dataset
+tipdata <- fromJSON(sprintf("[%s]", paste(tipstrings, collapse = ',')), # separates array, insert commas and put everything in []
+                    flatten = T, 
+                    simplifyVector = T,
+                    simplifyDataFrame = T)
+
+# Transform biz dataset
+userdata <- fromJSON(sprintf("[%s]", paste(userstrings, collapse = ',')), # separates array, insert commas and put everything in []
+                    flatten = T, 
+                    simplifyVector = T,
+                    simplifyDataFrame = T)
+
+
+
+# Save the businesses JSON strings as an RDS file
+saveRDS(bizdata, file=paste(sets[1], 'data.RDS', sep=''))
+# Save the check-in JSON strings as an RDS file
+saveRDS(checkindata, file=paste(sets[2], 'data.RDS', sep=''))
+# Save the review JSON strings as an RDS file
+saveRDS(reviewdata, file=paste(sets[3], 'data.RDS', sep=''))
+# Save the tips JSON strings as an RDS file
+saveRDS(tipdata, file=paste(sets[4], 'data.RDS', sep=''))
+# Save the businesses JSON strings as an RDS file
+saveRDS(userdata, file=paste(sets[5], 'data.RDS', sep=''))
