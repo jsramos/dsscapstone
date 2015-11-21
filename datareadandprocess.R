@@ -1,3 +1,6 @@
+# Clean environment
+rm(list = ls())
+
 # Libraries
 library(readr)
 library(jsonlite)
