@@ -81,8 +81,21 @@ finalreviewdata <- finalreviewdata %>% ungroup() %>% select(-year)
 change <- function(x) {x - lag(x)}
 finalreviewdata <- finalreviewdata %>% group_by(business_id) %>% 
         mutate_each(funs(change), 
-                    c(count_change_year = review_count_year, 
-                      stars_change_year = review_stars_year))
+                    c(review_count_change_year = review_count_year, 
+                      review_stars_change_year = review_stars_year))
 
-# We now calculate the change in number of reviews and change in stars over
-# each pair of years.
+# We now transform the data in wide format.
+finalreviewdata <- finalreviewdata %>% 
+        gather(type, value, starts_with("review")) %>% 
+        unite(type_year, type, year_seq, sep = "") %>% 
+        spread(type_year, value, drop = F, fill = 0)
+
+# And joint it with finalbizdata.
+# There are 61184 observations on businesses, but ratings for only 60785 of
+# them, so there are 399 that are unaccounted for.
+# So as not to obtain spurious predictions, these 399 records will be removed
+# from the main dataset and will not feature again in the study.
+finalbizdata <- inner_join(finalbizdata, finalreviewdata, by = c('business_id' = 'business_id'))
+
+# Save RDS
+saveRDS(finalbizdata, 'processeddata.RDS')
