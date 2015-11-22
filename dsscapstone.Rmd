@@ -233,6 +233,8 @@ We choose a Random Forest model due to it having built-in feature selection. Acc
 Also, even though [some authors](https://www.stat.berkeley.edu/~breiman/RandomForests/cc_home.htm#ooberr) state that RFs do not require cross-validation, we will nonetheless train our RF with a 5-fold, single-pass cross-validation in order to reduce any potential bias. Our data sets will be 70% training and 30% test.
 
 ```{r, message=FALSE, echo=FALSE}
+# Load processed data
+finalbizdata <- readRDS('./processeddata.RDS')
 # 70% training, 30% test sets
 inTrain <- createDataPartition(y = finalbizdata$open, p = 0.7, list = F)
 training <- finalbizdata[inTrain, ] # Don't forget the commas!
