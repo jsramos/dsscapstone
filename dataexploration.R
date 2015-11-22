@@ -68,7 +68,7 @@ reviewdata <- mutate(reviewdata, review_stars_year =
 # We can now remove 'stars' and 'date' column because we've sampled the data
 # down to yearly observations, regardless of the actual year in the review
 # date.
-finalreviewdata <- reviewdata %>% select(c(-stars, -date)) %>% 
+finalreviewdata <- reviewdata %>% 
         group_by(business_id, year, year_seq) %>%
         filter(row_number() == 1)
 

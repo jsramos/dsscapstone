@@ -5,7 +5,6 @@ rm(list = ls())
 library(readr)
 library(jsonlite)
 library(doParallel)
-library(data.table)
 library(plyr)
 library(dplyr)
 

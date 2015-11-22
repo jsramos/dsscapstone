@@ -2,23 +2,248 @@
 title: "Predicting Closure of Businesses Based on Rating Behaviour"
 author: "J.S. Ramos"
 date: "November 20, 2015"
-output: pdf_document
+output: 
+        pdf_document:
+                keep_tex: true
+fontsize: 10pt
+geometry: margin=0.8in
+graphics: yes
 ---
 
-# Introduction
+# 1. Introduction
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+This study aims to classify and predict whether a business will permanently close or remain active based on the number of user ratings and the stars given by those within [Yelp](http://www.yelp.com/)'s [yearly challenge](https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/yelp_dataset_challenge_academic_dataset.zip). The data contains information on users, businesses, ratings and check-ins on these ratings.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+Ratings are given at discrete moments in time with 1 to 5 stars. By building a predictive model that considers the change in number of ratings and stars across time we expect to arrive to a highly sensitive and specific classification model. Data on other entities like users and check-ins will not be considered relevant to the prediction exercise.
 
-```{r}
-summary(cars)
+Though this may hint at time-series modeling, powerful classification algorithms like bagging or random forest *are not suited for time series*, so instead of having ($\Delta_{ratings}$ and $\Delta_{stars}$) across time, we will model them in yearly, discrete instants regardless of the chronological place of such years.
+
+Finally, we will discuss the variable selection, accuracy, sensitivity and ROC curve of the prediction machine, and elaborate on alternative algorithms or variables.
+
+# 2. Methods and Data
+
+## 2.1. Obtaining and Cleaning Data
+The original data is in [JSON](http://www.json.org) format, and consists of 5 files totaling about 1.6GB uncompressed. Since the only entities we're interested in are ratings (yelp_academic_dataset_review.json) and businesses (yelp_academic_dataset_business.json), these are the only ones that will be loaded and transformed to a `data frame`. The cleaning process involves the following steps:
+
+1. **Parse file contents and convert from JSON to data frame**: JSON arrays are enclosed in '[]' and each JSON object separated by ','. We use `flatten = T, simplifyVector = T, simplifyDataFrame = T` to maximize flattening of the data.
+2. **Replace . (dot) in column names for _ (dash)**: dashes are more command-neutral than dots, and so preferred as column names.
+3. **Drop columns that are not related to rating counts or stars granted**: we'll not perform any text-based sentiment analysis, nor address users nor check-ins. The scope of this study concerns itself with only review counts and stars granted.
+4. **Convert date strings to POSIXct**: this is important in order to first have a time series and then convert it to discrete yearly observations as our method requires.
+
+```{r, message=FALSE, echo=FALSE}
+# Clean environment
+rm(list = ls())
+
+# Required libraries
+library(ggplot2)
+library(readr)
+library(jsonlite)
+library(doParallel)
+library(dplyr)
+library(lubridate)
+library(tidyr)
+library(randomForest)
+library(caret)
+library(doMC)
+
+# Register cores to harness CPUs and speed things up a little
+registerDoParallel(cores = 3)
+
+# Filenames
+bizfile <- './yelp_dataset_challenge_academic_dataset/yelp_academic_dataset_business.json'
+reviewfile <- './yelp_dataset_challenge_academic_dataset/yelp_academic_dataset_review.json'
+
+# Separates array, insert commas and enclose everything in []
+bizdata <- fromJSON(sprintf("[%s]", paste(
+        read_lines(bizfile), 
+        collapse = ',')), 
+        flatten = T, simplifyVector = T, simplifyDataFrame = T)
+
+reviewdata <- fromJSON(sprintf("[%s]", paste(
+        read_lines(reviewfile), 
+        collapse = ',')), 
+        flatten = T, simplifyVector = T, simplifyDataFrame = T)
+
+# Remove whitespaces from column names and replace '.' with '_'
+names(bizdata) <- gsub(' ', '', gsub('\\.', '_', gsub('-', '_', 
+                                                      names(bizdata), 
+                                                      perl = T), 
+                                     perl = T), 
+                       perl = T)
+names(reviewdata) <- gsub(' ', '', gsub('\\.', '_', gsub('-', '_', 
+                                                         names(reviewdata), 
+                                                         perl = T), 
+                                        perl = T), 
+                          perl = T)
+
+# Remove location columns since we're only
+# interested in state as geographic information.
+bizdata <- select(bizdata, c(business_id, open, stars))
+
+# We will remove 0 variance and text-based columns because we will not 
+# perform any sort of text mining or text-based sentiment analysis.
+# We will also remove all columns that don't concern ratings or stars.
+reviewdata <- select(reviewdata, c(-type, -text, -user_id, -review_id, 
+                                   -votes_funny, -votes_useful, 
+                                   -votes_cool))
+
+# Transform date variable from character to date
+reviewdata <- mutate(reviewdata, date = as.POSIXct(date))
+
+# Save files in binary format
+saveRDS(bizdata, file = 'businessdata.RDS')
+saveRDS(reviewdata, file = 'reviewdata.RDS')
+
+# Clean everything up
+rm(list = ls())
+
+# Read-in binary data
+bizdata <- readRDS("./businessdata.RDS")
+reviewdata <- readRDS("./reviewdata.RDS")
 ```
 
-You can also embed plots, for example:
+## 2.2. Exploring the Research Question with Hypothesis Testing
 
-```{r, echo=FALSE}
-plot(cars)
+We are interested in predicting if a business will remain open or close based on the ratings it receives, so to explore if this question is worth answering with the data we have, we perform a *hypothesis test*, with the following hypotheses:
+
+1. **$H_{0}$**: $\mu_{open} = \mu_{closed}$ 
+2. **$H_{a}$**: $\mu_{open} <> \mu_{closed}$ 
+
+To this end we first examine the difference in the distributions and means of each:
+
+```{r, echo=FALSE, message=FALSE, results='asis', fig.height=4, fig.width=7, fig.align='center'}
+# Save vector of stars given to open and closed business
+open <- as.numeric(filter(bizdata, open == T)$stars)
+closed <- as.numeric(filter(bizdata, open == F)$stars)
+
+# Exploring the distribution of star ratings for business by var 'open'
+m <- ggplot(bizdata, aes(x = stars, fill = open)) + 
+        geom_histogram(aes(y = ..density..), binwidth = 0.6, alpha = 0.5) +
+        geom_vline(color = '#F8766D', xintercept = mean(closed), 
+                   linetype = 'longdash', size = 1) +
+        geom_vline(color = '#00BFC4', xintercept = mean(open), 
+                   linetype = 'longdash', size = 1) +
+        geom_vline(color = '#F8766D', xintercept = median(closed), size = 0.5) +
+        geom_vline(color = '#00BFC4', xintercept = median(open), size = 0.5) +
+        labs(title = 'Distributions for open and closed businesses\n(means in dashed, medians in solid lines)')
+m
+
+# Remove stars column
+bizdata <- bizdata %>% select(-stars)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+From the plot we can see that the mean stars received by each type of business is different, and that although the distributions are a little skewed to the left (given that the ratings are capped at 5 stars), they still follow an approximately normal curve. Also note the considerably lower number of ratings of any number of stars that closed businesses receive (i.e. a little less than half of those received by businesses that are still open for the mean number of stars).
+
+This allows us to perform a Welch's 2-sample T-test to assess which hypothesis is valid.
+
+```{r, message=FALSE}
+# Welch T test for stars for open and closed businesses
+hyptest <- t.test(open, closed, var.equal = F)
+hyptest
+```
+
+With a p-value of **`r round(hyptest$p.value, 2)`** and given that the 95% CI of **(`r round(hyptest$conf.int, 2)`)** is not centered around 0, we *fail to reject H~0~* and conclude that the question is worth studying further.
+
+## 2.3. Converting a Time-Series to Wide Format
+
+As explained above, $\Delta_{ratings}$ and $\Delta_{stars}$ are time series, but modern statistical learning algorithms for classification are not suited for this type of data. Also, there are several businesses with only 3 ratings, meaning that we would only have 2 data points for these $\Delta$s. Moreover, ratings are not given at the same time for every business observed (i.e. a biz may open in 2004 and receive its 1st review in 2007, while another may open in 2008 and receive its 1st review the same year).
+
+Due to these limitations, we must convert the review data set to a *wide format* and then append it to the business data set, a process that took the following steps:
+
+1. **Partition the review count and stars by year**: we discretely partition the time series into yearly slices, so we need to sum the number of reviews and average the stars per year for each business.
+```{r, message=FALSE, echo=FALSE}
+# Create a column with year of review only and fix types for other columns.
+reviewdata <- mutate(reviewdata, year = year(date))
+reviewdata <- mutate(reviewdata, stars = as.numeric(stars))
+
+# Create an identifier that is local to the business_id, 
+# but sequential to the year.
+reviewdata <- reviewdata %>% group_by(business_id) %>% 
+        mutate(year_seq = dense_rank(year))
+
+# Create column with review count by year for each business.
+reviewdata <- mutate(reviewdata, review_count_year = 
+                             as.numeric(ave(business_id, year, 
+                                            business_id, FUN = length)))
+
+# Create column with mean stars per year for each business.
+reviewdata <- mutate(reviewdata, review_stars_year = 
+                           round(ave(stars, business_id, year, FUN = mean), 2))
+
+head(select(reviewdata, business_id, review_count_year, review_stars_year), 5)
+```
+
+2. **Calculate $\Delta_{ratings}$ and $\Delta_{stars}$** for each 2-year period with the `lag()` function to arrive to the following:
+
+```{r, message=FALSE, echo=FALSE}
+# We can now remove 'stars' and 'date' column because we've sampled the data
+# down to yearly observations, regardless of the actual year in the review
+# date.
+finalreviewdata <- reviewdata %>% 
+        group_by(business_id, year, year_seq) %>%
+        filter(row_number() == 1)
+
+# We ungroup the set and remove year, since we're already accounting for it
+# with 'year_seq'.
+finalreviewdata <- finalreviewdata %>% ungroup() %>% select(-year, -date, -stars)
+
+# We regroup based on 'business_id' in order to calculate the change with lag
+# for stars and review count.
+change <- function(x) {x - lag(x)}
+finalreviewdata <- finalreviewdata %>% group_by(business_id) %>% 
+        mutate_each(funs(change), 
+                    c(review_count_change_year = review_count_year, 
+                      review_stars_change_year = review_stars_year))
+
+head(select(finalreviewdata, business_id, review_count_change_year, review_stars_change_year), 5)
+```
+
+3. **Make the data wide**: since we cannot have repeated `business_id` because we wish to have a single classification (open = TRUE | FALSE) for each, we need to go from long format to wide format. See [here](http://www.r-bloggers.com/converting-a-dataset-from-wide-to-long/) for an explanation between these forms and their respective use cases.
+
+```{r, message=FALSE, echo=FALSE}
+# We now transform the data in wide format.
+finalreviewdata <- finalreviewdata %>% 
+        gather(type, value, starts_with("review")) %>% 
+        unite(type_year, type, year_seq, sep = "") %>% 
+        spread(type_year, value, drop = F, fill = 0)
+```
+
+4. **Join this new wide dataset with the business dataset**: we now have a *`r nrow(finalreviewdata)` x `r ncol(finalreviewdata)`* dataframe, however, there are `r nrow(bizdata)` observations on businesses,  `r nrow(bizdata)-nrow(finalreviewdata)` observations more that are unaccounted for. To preveint obtaining spurious predictions, these `r nrow(bizdata)-nrow(finalreviewdata)` records will be removed from the main dataset. Also, the key column `business_id` will be dropped both because it has 100% variance, and because it is of no interest to the prediction exercise. Finally, we'll only leave the variables that represent change, and drop those that have final states between years both for review counts and stars.
+
+```{r, message=FALSE, echo=FALSE}
+# Join finalreviewdata with bizdata to create the final dataset
+finalbizdata <- inner_join(bizdata, finalreviewdata, by = c('business_id' = 'business_id'))
+# Drop the business_id
+rownames(finalbizdata) <- finalbizdata$business_id
+finalbizdata <- finalbizdata %>% select(-business_id)
+# Convert response variable to factor
+finalbizdata <- finalbizdata %>% mutate(open = as.factor(open))
+# Keep only variables that contain 'change'
+finalbizdata <- finalbizdata %>% select(open, contains('change'))
+# Save RDS
+saveRDS(finalbizdata, 'processeddata.RDS')
+```
+
+This process results in a dataset that contains **12 variables** indicating **12 years** of **$\Delta_{ratings}$** and **$\Delta_{stars}$**. We can now attempt to run it by a random forest and assess variable selection, sensitivity, ROC, etc.
+
+## 2.4. Random Forest
+We choose a Random Forest model due to it having built-in feature selection. According to the `caret` package [documentation](http://topepo.github.io/caret/featureselection.html), its feature selection algorithm is coupled with the parameter estimation algorithm, making it faster than if the features were searched for externally.
+
+Also, even though [some authors](https://www.stat.berkeley.edu/~breiman/RandomForests/cc_home.htm#ooberr) state that RFs do not require cross-validation, we will nonetheless train our RF with a 5-fold, single-pass cross-validation in order to reduce any potential bias, and to further get a more accurate estimate of the out-of-sample error. Our data sets will be 70% training and 30% test.
+
+```{r, message=FALSE, echo=FALSE}
+# 70% training, 30% test sets
+inTrain <- createDataPartition(y = finalbizdata$open, p = 0.7, list = F)
+training <- finalbizdata[inTrain, ] # Don't forget the commas!
+test <- finalbizdata[-inTrain, ] # Don't forget the commas!
+# Register core for parallel processing.
+registerDoMC(cores = 3) 
+# train control function for X-validation.
+tControl <- trainControl(method = 'cv', number = 5, allowParallel = T) 
+# Microbenchmark
+ptm <- proc.time()
+# model building
+rfModel <- train(open ~ ., data = training, method = 'rf', trControl = tControl, importance = T)
+finalTime <- proc.time() - ptm
+rfModel
+```
