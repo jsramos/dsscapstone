@@ -134,7 +134,7 @@ From the plot we can see that the mean stars received by each type of business i
 
 This allows us to perform a Welch's 2-sample T-test to assess which hypothesis is valid.
 
-```{r, message=FALSE}
+```{r, echo=F,message=FALSE}
 # Welch T test for stars for open and closed businesses
 hyptest <- t.test(open, closed, var.equal = F)
 hyptest
@@ -284,7 +284,7 @@ From the confusion matrix we can surmise that the statistical machine does a fai
 
 To confirm this conclusion, we plot the ROC curve and see that the algorithm's positive predictive power is 0, so even if it can predict businesses that will remain open, the fact that it cannot predict the opposite makes the prediction machine unusable.
 
-```{r,echo=F, warning=FALSE, message=FALSE, results='asis', fig.align='center', fig.height=3, fig.width=4}
+```{r,echo=F, warning=FALSE, message=FALSE, fig.align='center', fig.height=3, fig.width=4}
 library(pROC)
 selectedIndices <- rfModel$pred$mtry == 2
 

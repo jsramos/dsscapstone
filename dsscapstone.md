@@ -34,7 +34,7 @@ Predicting Closure of Businesses Based on Rating Behaviour
 author: Jesus Ramos
 date: November 22 2015
 transition: rotate
-<div class="midcenter" style="background-color:transparent; border:0px; box-shadow:none; margin-left:-480px; margin-top:0px;">
+<div class="midcenter" style="background-color:transparent; border:0px; box-shadow:none; margin-left:-475px; margin-top:100px;">
 <img src="http://vignette2.wikia.nocookie.net/fleck/images/c/c8/Yelp_Logo.png/revision/latest?cb=20110828035920"></img>
 </div>
 
@@ -51,17 +51,19 @@ Motivation & Business Question
 
 Methodology
 ===
-1. Gather data .
-2. Explore the relationship between critics' and users' ratings via a linear model.
-3. Try to predict the rating from critics of a new game for a given platform given a user rating.
+1. Load data from [Yelp](https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/yelp_dataset_challenge_academic_dataset.zip) and test if the mean stars for closed business is significantly different from the mean stars for those still alive.
+2. Convert ratings from repeated observations in time, to a yearly accumulated per business.
+2. Calculate year-to-year changes in rating counts and number of stars.
+3. Predict the closure of a business with a statistical learning algorithm.
 
-Linear Plot and Model
+Results & Conclusion 
 ===
 left: 60%
 class: small-code
+Siviri
+<img src="dsscapstone-figure/unnamed-chunk-1-1.png" title="plot of chunk unnamed-chunk-1" alt="plot of chunk unnamed-chunk-1" style="display: block; margin: auto;" />
+***
+<font size="5">We can see from the plot that...</font>
 
-
-
-```
-Error in file(file, "rt") : cannot open the connection
-```
+Random Forest
+===

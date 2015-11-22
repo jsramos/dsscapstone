@@ -34,7 +34,7 @@ Predicting Closure of Businesses Based on Rating Behaviour
 author: Jesus Ramos
 date: `r format(Sys.Date(), format="%B %d %Y")`
 transition: rotate
-<div class="midcenter" style="background-color:transparent; border:0px; box-shadow:none; margin-left:-480px; margin-top:0px;">
+<div class="midcenter" style="background-color:transparent; border:0px; box-shadow:none; margin-left:-475px; margin-top:100px;">
 <img src="http://vignette2.wikia.nocookie.net/fleck/images/c/c8/Yelp_Logo.png/revision/latest?cb=20110828035920"></img>
 </div>
 
@@ -51,51 +51,46 @@ Motivation & Business Question
 
 Methodology
 ===
-1. Gather data .
-2. Explore the relationship between critics' and users' ratings via a linear model.
-3. Try to predict the rating from critics of a new game for a given platform given a user rating.
+1. Load data from [Yelp](https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/yelp_dataset_challenge_academic_dataset.zip) and test if the mean stars for closed business is significantly different from the mean stars for those still alive.
+2. Convert ratings from repeated observations in time, to a yearly accumulated per business.
+2. Calculate year-to-year changes in rating counts and number of stars.
+3. Predict the closure of a business with a statistical learning algorithm.
 
-Linear Plot and Model
+Results & Conclusion 
 ===
 left: 60%
 class: small-code
-```{r, echo=F, fig.width=6, fig.height=5, fig.align='center'}
+Siviri
+```{r, echo=FALSE, message=FALSE, results='asis', fig.align='center', fig.width=4, fig.height=4}
+# Libraries
 library(ggplot2)
 library(dplyr)
-# Data loading, cleaning and processing
-ratingps4 <- read.csv('./metacriticdata-ps4.txt', header = F)
-ratingps4 <- ratingps4 %>% mutate(Platform='PS4')
 
-ratingsxbone <- read.csv('./metacriticdata-xbone.txt', header = F)
-ratingsxbone <- ratingsxbone %>% mutate(Platform='XBoxOne')
+# Clean everything up
+rm(list = ls())
 
-ratingswiiu <- read.csv('./metacriticdata-wiiu.txt', header = F)
-ratingswiiu <- ratingswiiu %>% mutate(Platform='WiiU')
+# Read-in binary data
+bizdata <- readRDS("./businessdata.RDS")
+reviewdata <- readRDS("./reviewdata.RDS")
 
-ratingspc <- read.csv('./metacriticdata-pc.txt', header = F)
-ratingspc <- ratingspc %>% mutate(Platform='PC')
+# Save vector of stars given to open and closed business
+open <- as.numeric(filter(bizdata, open == T)$stars)
+closed <- as.numeric(filter(bizdata, open == F)$stars)
 
-ratings <- rbind(ratingps4,ratingsxbone,ratingswiiu,ratingspc)
-names(ratings) <- c('CriticRating', 'GameName', 'UserRating', 'Platform')
-ratings <- ratings %>% mutate(CriticRating=round(CriticRating/10,2))
-ratings <- ratings %>% filter(UserRating!='tbd')
-ratings <- ratings %>% mutate(CriticRating=as.numeric(CriticRating), UserRating=as.numeric(UserRating))
-platforms <- c('All',unique(ratings$Platform))
-
-# Linear models
-lmRatingsByPlat <- lm(CriticRating ~ UserRating * Platform, ratings)
-lmRatings <- lm(CriticRating ~ UserRating, ratings)
-
-# Plot
-qplot(x=UserRating, y=CriticRating, data=ratings, color=Platform, geom=c('point','smooth'), method='lm',xlab="Users' Rating", ylab="Critics' Rating") + geom_line(x=ratings$UserRating, y=lmRatings$fitted.values, color=I('black'))
-
-round(summary(lmRatingsByPlat)$coef[,-3],2)
+# Exploring the distribution of star ratings for business by var 'open'
+m <- ggplot(bizdata, aes(x = stars, fill = open)) + 
+        geom_histogram(aes(y = ..density..), binwidth = 0.6, alpha = 0.5) +
+        geom_vline(color = '#F8766D', xintercept = mean(closed), 
+                   linetype = 'longdash', size = 1) +
+        geom_vline(color = '#00BFC4', xintercept = mean(open), 
+                   linetype = 'longdash', size = 1) +
+        geom_vline(color = '#F8766D', xintercept = median(closed), size = 0.5) +
+        geom_vline(color = '#00BFC4', xintercept = median(open), size = 0.5) +
+        labs(title = 'Distributions for open and closed businesses\n(means in dashed, medians in solid lines)')
+m
 ```
 ***
-<font size="5">According to the figures, every 1-point increment in user ratings brings a *`r round(coef(lmRatings)[2],2)`* increase in critic ratings. Though this relationship is very significant at a p-value of *`r round(summary(lmRatings)$coeff[2,4],2)`*, it only explains *`r round(summary(lmRatings)$r.squared*100,2)`%* of the variance. However, if we control for platform we can account for *`r round(summary(lmRatingsByPlat)$r.squared*100,2)`%* of the variance, but then the only good predictor between ratings is for WiiU.</font>
+<font size="5">We can see from the plot that...</font>
 
-Conclusion & Pitch
+Random Forest
 ===
-1. Even though the prediction for platforms other than WiiU may not be so reliable, it is nonetheless interesting to observe how for more 'hardcore' platforms users give a wider range of ratings than critics, while for more 'family-friendly' platforms users and critics are more consistent.
-2. To explore this relationship, the difference in ratings for the titles, and to estimate a critic rating from a user rating (regardless of the confidence on the prediction) for a new game, we have developed a Shiny app.
-3. The Shiny app can be found *[here](https://jsramos.shinyapps.io/dataproducts)*. We submit it for your consideration. Enjoy!
